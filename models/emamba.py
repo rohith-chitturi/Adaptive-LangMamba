@@ -28,10 +28,13 @@ try:
     else:
         from selective_scan_vmamba import selective_scan_cuda_core
 except Exception as e:
-    print(e, flush=True)
+    # print(e, flush=True)
     "you should install mamba_ssm to use this"
     SSMODE = "mamba_ssm"
-    import selective_scan_cuda
+    try:
+        import selective_scan_cuda
+    except ImportError:
+        selective_scan_cuda = None
     # from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, selective_scan_ref
 
 

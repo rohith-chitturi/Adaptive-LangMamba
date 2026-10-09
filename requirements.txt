@@ -1,0 +1,20 @@
+torch==1.12.1
+torchvision==0.13.1
+numpy==1.22.3
+tqdm
+pydicom
+Pillow
+transformers
+albumentations
+scipy
+scikit-image
+beautifulsoup4
+requests
+kornia
+dominate
+ruamel.yaml
+omegaconf
+gensim
+einops
+info_nce
+# Note: 'clip' might require installation from git: pip install git+https://github.com/openai/CLIP.git

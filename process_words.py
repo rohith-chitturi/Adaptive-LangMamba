@@ -14,7 +14,7 @@ from PIL import Image
 from transformers import CLIPModel,CLIPProcessor
 
 import json
-
+import argparse
 
 def sorted_list(path): 
     
@@ -66,13 +66,18 @@ def compute_similarities(image,texts):
     return final_similarities
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir', type=str, default='./datasets/Mayo2016_2d/train/quarter_1mm/*', help='Path to dataset images')
+    parser.add_argument('--clip_path', type=str, default='./weights/pubmed-clip-vit-base-patch32', help='Path to pretrained CLIP model')
+    args = parser.parse_args()
+
     #image_list=sorted_list('/mnt/miah203/zhchen/Mayo2016_2d/train/full_1mm/*')
-    image_list=sorted_list('/mnt/miah203/zhchen/Mayo2016_2d/train/quarter_1mm/*')
+    image_list=sorted_list(args.data_dir)
 
-    device = "cuda:3" if torch.cuda.is_available() else "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = CLIPModel.from_pretrained("/mnt/miah203/zhchen/pubmed-clip-vit-base-patch32")
-    processor = CLIPProcessor.from_pretrained("/mnt/miah203/zhchen/pubmed-clip-vit-base-patch32")
+    model = CLIPModel.from_pretrained(args.clip_path)
+    processor = CLIPProcessor.from_pretrained(args.clip_path)
 
     model=model.to(device)
 

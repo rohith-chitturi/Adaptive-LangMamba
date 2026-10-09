@@ -432,6 +432,8 @@ class Encoder(nn.Module):
         h = self.norm_out(h)
         h = nonlinearity(h)
         h = self.conv_out(h)
+        if getattr(self, 'return_hs', False):
+            return h, hs
         return h
 
 

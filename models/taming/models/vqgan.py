@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
-import pytorch_lightning as pl
+try:
+    import pytorch_lightning as pl
+except ImportError:
+    pass
 import ipdb
 import torch.nn as nn
 #ipdb.set_trace()
@@ -82,6 +85,8 @@ class VQModel(nn.Module):
 
     def encode(self, x, path=None):
         h = self.encoder(x)
+        if isinstance(h, tuple):
+            h = h[0]
         h = self.quant_conv(h)
         quant, emb_loss, info = self.quantize(h,path)
         return quant, emb_loss, info,h

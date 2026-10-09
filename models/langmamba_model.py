@@ -17,13 +17,13 @@ You need to implement the following functions:
 """
 import torch
 from .base_model import BaseModel
-from . import networks3
+from . import networks
 import os
 import numpy as np
 import torch.nn as nn
 import util.util as util
 import ipdb
-from .VL_loss import vqgan_loss
+from .leda_loss import LEDA_loss as vqgan_loss
 import torchvision.models as models
 from .emamba import SS2D
 from .seed import SEED
@@ -69,10 +69,18 @@ class LANGMAMBAModel(BaseModel):
         self.model_names = ['G']
         # define networks; you can use opt.isTrain to specify different behaviors for training and test.
 
+        self.use_confidence_token_selection = getattr(opt, 'use_confidence_token_selection', False)
+        if self.use_confidence_token_selection:
+            from .confidence_token_selector import ConfidenceTokenSelector
+            # Initialize confidence token selector for semantic text embeddings.
+            # Consumes [B, N, D] text tokens, produces [B, K, D] selected text tokens.
+            # D=512 for typical CLIP text features.
+            self.confidence_selector = ConfidenceTokenSelector(embed_dim=512, selection_ratio=0.5).to(self.device)
+
 
         self.vision_loss= vqgan_loss().to(self.device) 
-        model=SEED(encoder=self.vision_loss.vqgan.encoder)
-        self.netG = networks3.init_net(model,gpu_ids=opt.gpu_ids,initialize_weights=True).to(self.device)
+        model=SEED(opt=opt, encoder=self.vision_loss.vqgan.encoder)
+        self.netG = networks.init_net(model,gpu_ids=opt.gpu_ids,initialize_weights=True).to(self.device)
 
         if self.isTrain:  # only defined during training time
             # define your loss functions. You can use losses provided by torch.nn such as torch.nn.L1Loss.
