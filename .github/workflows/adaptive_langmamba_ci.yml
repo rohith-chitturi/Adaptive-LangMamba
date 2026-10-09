@@ -1,0 +1,94 @@
+name: Adaptive LangMamba CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/*
+      - fix/*
+      - ci/*
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-repository:
+    name: Repository and Syntax Validation (Job A)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          
+      - name: Check Python Syntax
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,env,.env
+
+  unit-tests:
+    name: Unit Tests (Job B)
+    runs-on: ubuntu-latest
+    needs: validate-repository
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install PyTorch (CPU)
+        run: |
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          
+      - name: Install test dependencies
+        run: |
+          pip install pytest numpy einops
+          
+      - name: Run Unit Tests
+        run: |
+          python -m pytest tests/
+
+  model-checks:
+    name: Model & Dataset-Independent Checks (Job C)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install dependencies
+        run: |
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy einops timm
+          
+      - name: Validate Gradient Flow & Tensor Shapes
+        run: |
+          # A simple execution of the isolated confidence selector
+          python tests/test_confidence_token_selector.py
+
+  environment-report:
+    name: Dependency & Environment Reporting (Job D)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report Limitations
+        run: |
+          echo "REPORT: The LangMamba framework requires CUDA for certain operations (e.g., selective_scan_cuda)."
+          echo "REPORT: CPU runners cannot compile or execute these CUDA-only extensions."
+          echo "REPORT: Full-scale Mayo training requires large pretrained checkpoints which are not downloaded during CI."
+          echo "REPORT: GPU validation and scientific experiments must be performed in a separate GPU environment."
