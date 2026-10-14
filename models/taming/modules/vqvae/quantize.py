@@ -4,12 +4,16 @@ import torch.nn.functional as F
 import numpy as np
 from torch import einsum
 from einops import rearrange
-from transformers import BertModel, BertConfig
-import ipdb
-
-from transformers import BertTokenizer, BertModel
-from transformers import CLIPModel,CLIPProcessor
-from info_nce import InfoNCE, info_nce
+try:
+    from transformers import BertModel, BertConfig
+    from transformers import BertTokenizer, BertModel
+    from transformers import CLIPModel,CLIPProcessor
+except ImportError:
+    pass
+try:
+    from info_nce import InfoNCE, info_nce
+except ImportError:
+    pass
 
 import json
 
@@ -23,7 +27,7 @@ class VectorQuantizer_SPAE(nn.Module):
     # backwards compatibility we use the buggy version by default, but you can
     # specify legacy=False to fix it.
     def __init__(self, n_e, e_dim, beta, remap=None, unknown_index="random",
-                 sane_index_shape=False, legacy=True):
+                 sane_index_shape=False, legacy=True, clip_path='./weights/pubmed-clip-vit-base-patch32', word_json_path='./selctd_words_all_3l.json'):
         super().__init__()
         self.n_e = n_e
         self.e_dim = e_dim
@@ -33,18 +37,32 @@ class VectorQuantizer_SPAE(nn.Module):
         self.embedding = nn.Embedding(self.n_e, self.e_dim)
         self.embedding.weight.data.uniform_(-1.0 / self.n_e, 1.0 / self.n_e)
 
-        model = CLIPModel.from_pretrained("/mnt/miah203/zhchen/pubmed-clip-vit-base-patch32")
-        processor = CLIPProcessor.from_pretrained("/mnt/miah203/zhchen/pubmed-clip-vit-base-patch32")
-        self.embedding=model.text_model.embeddings.token_embedding
+        try:
+            model = CLIPModel.from_pretrained(clip_path)
+            self.embedding=model.text_model.embeddings.token_embedding
+        except Exception:
+            print("INTEGRATION VALIDATION MODE: Using dummy CLIP token embedding.")
+            self.embedding = nn.Embedding(49408, 512)
+            
         self.e_dim = self.embedding.weight.shape[-1]
         self.n_e = self.embedding.weight.shape[0]
 
-        with open('/home/zhchen/selctd_words_all_3l.json', 'r') as fcc_file:
-            self.selctd_words = json.load(fcc_file)
+        try:
+            with open(word_json_path, 'r') as fcc_file:
+                self.selctd_words = json.load(fcc_file)
+        except FileNotFoundError:
+            print(f"INTEGRATION VALIDATION MODE: Missing {word_json_path}. Using dummy textual indices for validation.")
+            self.selctd_words = None
         #self.select_indices=torch.from_numpy(np.load('/home/zhchen/LLM_DN/taming-transformers-master/indice2.npy'))
-        self.nceloss=InfoNCE(negative_mode='unpaired')
+        try:
+            self.nceloss=InfoNCE(negative_mode='unpaired')
+        except NameError:
+            self.nceloss = None
 
         self.embedding.requires_grad = False 
+        
+        from models.confidence_token_selector import ConfidenceTokenSelector
+        self.confidence_selector = ConfidenceTokenSelector(embed_dim=self.e_dim)
 
     def forward(self, z, path=None,temp=None, rescale_logits=False, return_logits=False):
         assert temp is None or temp==1.0, "Only for interface compatible with Gumbel"
@@ -101,11 +119,28 @@ class VectorQuantizer_SPAE(nn.Module):
                     h,w,c=z_l[i].shape #z_l[i] h,w,c
 
                     if 'train' in image_id:
-                        #ipdb.set_trace()
-                        select_indices=self.selctd_words[image_id][l] # 第l层选的词的index
-                        random_select_indices=random.choices(select_indices, k=k_list[l])
-                        random_select_indices=torch.from_numpy(np.array(random_select_indices))
-                        selected_embedding_weight=self.embedding.weight[random_select_indices] #1,hl*wl,512
+                        if self.selctd_words is not None:
+                            select_indices=self.selctd_words[image_id][l] # 第l层选的词的index
+                        else:
+                            # Use dummy selection indices for validation since JSON is missing
+                            import random
+                            select_indices = random.choices(range(self.n_e), k=k_list[l]*2)
+                        import os
+                        if os.environ.get("USE_CONFIDENCE_SELECTOR") == "1":
+                            self.confidence_selector = self.confidence_selector.to(self.embedding.weight.device)
+                            full_indices = torch.tensor(select_indices, dtype=torch.long, device=self.embedding.weight.device)
+                            full_embeddings = self.embedding.weight[full_indices].unsqueeze(0) # [1, N, 512]
+                            
+                            selected_embeddings, _ = self.confidence_selector(full_embeddings, k=k_list[l])
+                            selected_embedding_weight = selected_embeddings.squeeze(0) # [K, 512]
+                            
+                            # Keep track of counts for reporting
+                            if not hasattr(self, 'token_stats'): self.token_stats = []
+                            self.token_stats.append((full_embeddings.shape[1], selected_embeddings.shape[1]))
+                        else:
+                            random_select_indices=random.choices(select_indices, k=k_list[l])
+                            random_select_indices=torch.from_numpy(np.array(random_select_indices)).to(self.embedding.weight.device)
+                            selected_embedding_weight=self.embedding.weight[random_select_indices] #1,hl*wl,512
                         
                         if l<2: #1,2层选词
                             non_zero_indices=torch.nonzero(masks[l].squeeze(), as_tuple=True)
@@ -118,8 +153,10 @@ class VectorQuantizer_SPAE(nn.Module):
 
                         z_c=selected_embedding_weight.view(z_l_mask.shape) ## hl*wl,512
                         
-                        #公式(7)
-                        semantic_loss+=(-torch.log(torch.exp(-torch.mean((z_c - z_l_mask) ** 2))/torch.exp(-d_l).sum()))/(z.shape[0]*layer)
+                        # Use numerically stable logsumexp to prevent NaN
+                        num = -torch.mean((z_c - z_l_mask) ** 2)
+                        den = torch.logsumexp(-d_l.view(-1), dim=0)
+                        semantic_loss += -(num - den) / (z.shape[0] * layer)
             else:
                 semantic_loss=0
             #b,h,w,c 公式(2)

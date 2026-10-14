@@ -309,7 +309,7 @@ def bmc_loss(pred, target, noise_var):
     logits=-0.5 * euclidean_dist(pred,target)/ noise_var
     #logits = - 0.5 * (pred - target.T).pow(2) / noise_var
     #ipdb.set_trace()
-    loss = F.cross_entropy(logits, torch.arange(pred.shape[0]).cuda())
+    loss = F.cross_entropy(logits, torch.arange(pred.shape[0]).to(pred.device))
     loss = loss * (2 * noise_var).detach()
 
     return loss

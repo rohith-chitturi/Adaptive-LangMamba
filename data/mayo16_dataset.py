@@ -48,6 +48,11 @@ class Mayo16Dataset(BaseDataset):
         f_data=np.load(self.f_path_list[index]).astype(np.float32)
         q_data = np.load(self.q_path_list[index]).astype(np.float32)
 
+        if f_data.ndim == 2:
+            f_data = np.expand_dims(f_data, axis=0)
+        if q_data.ndim == 2:
+            q_data = np.expand_dims(q_data, axis=0)
+
 
         if self.transforms is not None:
             q_data = self.transforms[0](q_data)

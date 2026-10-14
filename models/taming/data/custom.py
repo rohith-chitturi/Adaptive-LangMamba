@@ -75,23 +75,23 @@ class CustomBase(Dataset):
 
 
 class CustomTrain(CustomBase):
-    def __init__(self, size, training_images_list_file):
+    def __init__(self, size, training_images_list_file='./datasets/Mayo2016_2d'):
         super().__init__()
         # with open(training_images_list_file, "r") as f:
         #     paths = f.read().splitlines()
         # self.data = ImagePaths(paths=paths, size=size, random_crop=False)
         self.transforms = get_transforms()[0][0]
-        self.data=sorted_list('/data/zhchen/Mayo2016_2d/train/full_1mm/*')
+        self.data=sorted_list(os.path.join(training_images_list_file, 'train/full_1mm/*'))
 
 
 class CustomTest(CustomBase):
-    def __init__(self, size, test_images_list_file):
+    def __init__(self, size, test_images_list_file='./datasets/Mayo2016_2d'):
         super().__init__()
         # with open(test_images_list_file, "r") as f:
         #     paths = f.read().splitlines()
         # self.data = ImagePaths(paths=paths, size=size, random_crop=False)
         self.transforms = get_transforms()[1][0]
-        self.data=sorted_list('/data/zhchen/Mayo2016_2d/test/full_1mm/*')
+        self.data=sorted_list(os.path.join(test_images_list_file, 'test/full_1mm/*'))
 
 
 
